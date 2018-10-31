@@ -1,0 +1,436 @@
+# servidor VM local - jkato car09
+# mysql root xpto2015
+
+# Processo de instal e config do arapuca portando para ubuntu 16.04, mysql e php7
+
+# sera um fork do arapuca já que ele não esta mais em desenvolvimento
+
+--- links
+http://wiki.freeradius.org/guide/SQL-HOWTO-for-freeradius-3.x-on-Debian-Ubuntu
+https://lalitvc.wordpress.com/2014/07/03/freeradius-3-0-x-installation-and-configuration-with-mysql/
+https://pplware.sapo.pt/linux/aprenda-a-instalar-e-configurar-o-freeradius-parte-ii/
+	---language
+	https://stackoverflow.com/questions/27881976/set-global-language-value-in-yii2-application
+	
+	--- authentication
+	https://code.tutsplus.com/tutorials/how-to-program-with-yii2-user-access-controls--cms-23173
+	http://techbloghunting.com/2016/11/20/program-yii2-user-access-controls/
+	
+
+You can set your base language in the configuration file. In the basic application it's default location is: /config/web.php, in advanced: application-name/config/main.php and application-name/config/main-local.php.
+
+$config = [
+    'id' => 'basic',
+    'language' => 'nl', // Set the language here
+    'basePath' => dirname( __DIR__ ),
+    'bootstrap' => ['log'],
+    ...
+];
+
+
+
+--- links
+
+
+Welcome to Ubuntu 16.04.3 LTS (GNU/Linux 4.4.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+
+174 packages can be updated.
+90 updates are security updates.
+# já tem o lamp pre instalado
+
+apache2 -version
+Server version: Apache/2.4.18 (Ubuntu)
+Server built:   2017-07-27T14:34:01
+
+mysql --version
+mysql  Ver 14.14 Distrib 5.7.19, for Linux (x86_64) using  EditLine wrapper
+
+php -version
+PHP 7.0.18-0ubuntu0.16.04.1 (cli) ( NTS )
+Copyright (c) 1997-2017 The PHP Group
+Zend Engine v3.0.0, Copyright (c) 1998-2017 Zend Technologies
+    with Zend OPcache v7.0.18-0ubuntu0.16.04.1, Copyright (c) 1999-2017, by Zend Technologies
+
+------
+apt update && apt upgrade
+
+reboot
+
+----- pos-update
+
+root@ubuntu:~# apache2 -version
+Server version: Apache/2.4.18 (Ubuntu)
+Server built:   2018-04-18T14:53:04
+root@ubuntu:~# mysql --version
+mysql  Ver 14.14 Distrib 5.7.22, for Linux (x86_64) using  EditLine wrapper
+root@ubuntu:~# php -version
+PHP 7.0.28-0ubuntu0.16.04.1 (cli) ( NTS )
+Copyright (c) 1997-2017 The PHP Group
+Zend Engine v3.0.0, Copyright (c) 1998-2017 Zend Technologies
+    with Zend OPcache v7.0.28-0ubuntu0.16.04.1, Copyright (c) 1999-2017, by Zend Technologies
+
+--- pos-update
+ 
+apt install zip unzip php7.0-zip
+apt-get install php-mbstring
+apt-get install phpunit
+apt install php-gd php-curl
+apt-get install php7.0-intl
+
+apt-get install software-properties-common python-software-properties
+add-apt-repository ppa:freeradius/stable-3.0
+apt-get update
+curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+sudo apt-get update && sudo apt-get install yarn
+apt install npm
+npm run build
+
+
+apt install freeradius freeradius-mysql freeradius-utils
+
+
+freeradius -v
+ radiusd: FreeRADIUS Version 3.0.15, for host x86_64-pc-linux-gnu, built on Jul 28 2017 at 06:41:27
+ FreeRADIUS Version 3.0.15
+ Copyright (C) 1999-2017 The FreeRADIUS server project and contributors
+ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A
+ PARTICULAR PURPOSE
+ You may redistribute copies of FreeRADIUS under the terms of the
+ GNU General Public License
+ For more information about these matters, see the file named COPYRIGHT
+
+ systemctl enable freeradius.service
+ systemctl start freeradius.service
+
+ 
+mysql -uroot -p
+   CREATE DATABASE radius;
+   GRANT ALL ON radius.* TO radius@localhost IDENTIFIED BY "R4D1U5pA55W0RD";
+   exit
+   
+# mysql -u root -p radius < /etc/freeradius/mods-config/sql/main/mysql/schema.sql
+
+mysql -u radius -p radius < /etc/freeradius/mods-config/sql/main/mysql/schema.sql
+
+--- ou
+mysql -u radius -p radius 
+mysql> SOURCE /etc/freeradius/mods-config/sql/mysql/schema.sql
+
+mysql> INSERT INTO `radcheck` (`id`, `username`, `attribute`, `op`, `value`) VALUES (1,'pplware','User-Password',':=','123qwe');
+  insert into radcheck (username,attribute,op,value) values("fredf", "Cleartext-Password", ":=", "wilma");
+---
+4.Configure SQL module /etc/freeradius/mods-available/sql and change the database connection parameters to suite your environment:
+sql {
+driver = "rlm_sql_mysql"
+server = "127.0.0.1"
+port = 3306
+login = "radius"
+password = "R4D1U5pA55W0RD"
+# Database table configuration for everything except Oracle
+radius_db = "radius"
+}
+
+# Set to ‘yes’ to read radius clients from the database (‘nas’ table)
+# Clients will ONLY be read on server startup.
+read_clients = yes
+
+# Table to keep radius client info
+client_table = “nas”
+
+Next enable the sql module by executing
+
+    cd /etc/freeradius/mods-enabled
+    ln -s ../mods-available/sql sql
+
+---acho que é opcional
+5.Configure AAA queries (edit /mods-config/sql/main/mysql/queries.conf)
+Optionally, if you want to strip all realm names (i.e. you want user joe@domain.com to authenticate as just 'joe'), then in file /etc/freeradius/mods-config/sql/main/sql_dialect/queries.conf , under the 'query config: username' section, you MAY need to adjust the line(s) referring to sql_user_name. For example, in uncomment the line:
+
+sql_user_name = '%{Stripped-User-Name}'
+
+...and comment out the following line referring to just User-Name. If you want to see what's happening here, switch on all the logging options in radiusd.conf and run radiusd in debug mode (-X) to see what's happening : you'll see " user@domain" being passed to SQL when using User-Name, but just "user" when using Stripped-User-Name. Of course, set all your other SQL options as needed (database login details, etc)
+
+Edit /etc/raddb/sites-available/default (or whatever site config you use) and uncomment the line containing 'sql' in the authorize{} section. The best place to put it is just after the 'files' entry. Indeed, if you'll just be using SQL, and not falling back to text files, you could comment out or delete the 'files' entry altogether.
+
+Additionally, edit /etc/raddb/sites-available/inner-tunnel and uncomment the line containing 'sql' under "authorize {}".
+
+Also uncomment the line saying 'sql' in the accounting{} section to tell FreeRADIUS to store accounting records in SQL as well.
+
+Optionally add or uncomment 'sql' to the session{} section if you want to do Simultaneous-Use detection.
+
+Optionally add or uncomment 'sql' to the post-auth{} section if you want to log all Authentication attempts to SQL.
+
+---/acho que é opcional
+
+--- postauth
+edit queries.confg e inserir diaulup.conf (ver2.0) - postauth parameters.
+
+
+Test to see if Free Radius works by issuing the following command:
+./radiusd -X
+
+This will start FreeRadius in debug mode ( To stop it -> Ctrl+c).
+
+
+radtest pplware 123qwe 127.0.0.1 0 testing123
+radtest fredf wilma 127.0.0.1 0 testing123
+
+service freeradius start
+
+-------- composer
+Globally#
+
+You can place the Composer PHAR anywhere you wish. If you put it in a directory that is part of your PATH, you can access it globally. On unixy systems you can even make it executable and invoke it without directly using the php interpreter.
+
+After running the installer following the Download page instructions you can run this to move composer.phar to a directory that is in your path:
+
+mv composer.phar /usr/local/bin/composer
+
+Now run composer in order to run Composer instead of php composer.phar.
+
+composer install
+
+
+composer global require "fxp/composer-asset-plugin:^1.4.1"
+
+cd /var/www/html/
+
+
+composer create-project --prefer-dist yiisoft/yii2-app-basic basic
+composer create-project --prefer-dist yiisoft/yii2-app-advanced advanced
+composer create-project --prefer-dist yiisoft/yii2-app-basic trap-radius2
+
+cd /var/www/html/trap-radius2
+#composer require --dev --prefer-dist yiisoft/yii2-gii
+composer require --prefer-dist yiisoft/yii2-bootstrap
+
+composer create-project --prefer-dist yiisoft/yii2-app-basic fr-radius
+cd /var/www/html/fr-radius
+composer require --prefer-dist yiisoft/yii2-bootstrap
+composer require --dev --prefer-dist yiisoft/yii2-gii
+
+vi config/web.php
+if (YII_ENV_DEV) {
+    // configuration adjustments for 'dev' environment
+    $config['bootstrap'][] = 'debug';
+    $config['modules']['debug'] = [
+        'class' => 'yii\debug\Module',
+        // uncomment the following to add your IP if you are not connecting from localhost.
+        //'allowedIPs' => ['127.0.0.1', '::1'],
+    ];
+
+    $config['bootstrap'][] = 'gii';
+    $config['modules']['gii'] = [
+        'class' => 'yii\gii\Module',
+        // uncomment the following to add your IP if you are not connecting from localhost.
+        'allowedIPs' => ['127.0.0.1', '10.1.*.*', '::1'],
+    ];
+}
+
+
+---
+yii\web\Request::cookieValidationKey must be configured with a secret key.
+
+
+
+There is this problem with basic app now https://github.com/yiisoft/yii2-app-basic/issues/69 where composer install doesn't generate this key.
+
+You need to add this key manually.
+
+    Go to /config/web.php.
+    Edit the line 'cookieValidationKey' => '', to include random string (you can use anything like 'cookieValidationKey' => 'jfsbkjsbfdskjgfdskjbgfsdhjgfajds',
+
+---- db
+vi config/web.php
+return [
+    // ...
+    'components' => [
+        // ...
+        'db' => [
+            'class' => 'yii\db\Connection',
+            'dsn' => 'mysql:host=localhost;dbname=radius',
+            'username' => 'radius',
+            'password' => 'R4D1U5pA55W0RD',
+            'charset' => 'utf8',
+        ],
+    ],
+    // ...
+];
+
+---- install postgresql
+apt install postgresql postgresql-contrib postgresql-doc postgresql-client
+apt install freeradius-postgresql
+apt install php-pgsql php-mcrypt php-memcache
+
+
+#cd /etc/freeradius/mods-config/sql/main/postgresql
+
+#su postgres -c "psql -f setup.sql"
+
+su postgres -c "psql -f 000-usuario.sql"
+su postgres -c "psql -f 001-banco.sql"
+su postgres -c "psql -d arapuca -f 002-instalacao.sql"
+su postgres -c "psql -d arapuca -f 003-permissoes.sql"
+su postgres -c "psql -d arapuca -f 004-correcoes.sql"
+su postgres -c "psql -d arapuca -f 005-correcoes.sql"
+
+4.Configure SQL module /etc/freeradius/mods-available/sql and change the database connection parameters to suite your environment:
+sql {
+driver = "rlm_sql_postgresql"
+server = "127.0.0.1"
+port = 5432
+login = "radius"
+password = "R4D1U5pA55W0RD"
+# Database table configuration for everything except Oracle
+radius_db = "arapuca"
+}
+
+
+alter user radius password 'R4D1U5pA55W0RD'
+
+alter table ara_usuario alter column usuemail drop not null;
+alter table ara_usuario alter column usumatricula drop not null;
+alter table ara_usuario alter column usucpf drop not null;
+\d ara_usuario;
+
+\d ara_roteador;
+alter table ara_roteador alter column rotmac drop not null;
+alter table ara_roteador alter column rotobservacoes drop not null;
+
+
+ 
+service postgresql restart
+service freeradius restart
+
+psql  -U radius -W -h localhost -d arapuca
+
+
+
+----internalization
+https://code.tutsplus.com/tutorials/how-to-program-with-yii2-localization-with-i18n--cms-23140
+http://code-epicenter.com/how-to-make-multilanguage-website-using-yii-framework/
+https://github.com/samdark/yii2-cookbook/blob/master/book/i18n-selecting-application-language.md
+
+
+--- acho que é antigo
+https://www.yiiframework.com/wiki/792/selecting-best-language-based-on-browser-language-and-available-languages
+https://www.yiiframework.com/forum/index.php/topic/69014-change-language-solved/
+
+--- criando aplicacao fr-radius
+https://www.yiiframework.com/doc/guide/2.0/pt-br/tutorial-start-from-scratch
+
+cd /var/www/html
+composer create-project --prefer-dist yiisoft/yii2-app-basic fr-radius
+cd /var/www/html/fr-radius
+composer require --prefer-dist yiisoft/yii2-bootstrap
+composer require --dev --prefer-dist yiisoft/yii2-gii
+vi config/web.php
+    $config['modules']['gii'] = [
+        'class' => 'yii\gii\Module',
+        // uncomment the following to add your IP if you are not connecting from localhost.
+        'allowedIPs' => ['127.0.0.1', '::1', '10.1.1.*'],
+    ];
+
+vi config/db.php
+return [
+    'class' => 'yii\db\Connection',
+    'dsn' => 'pgsql:host=localhost;port=5432;dbname=arapuca',
+    'username' => 'radius',
+    'password' => 'R4D1U5pA55W0RD',
+    'charset' => 'utf8',
+];
+
+vi composer.json
+
+Next, you'll want to modify the composer.json to reflect your template. Change the name, description, keywords, homepage, license, and support values to describe your new template. Also adjust the require, require-dev, suggest, and other options to match your template's requirements.
+
+
+
+--- avaliar authenticacao
+https://www.cloudways.com/blog/user-authentication-yii2/
+
+--- criando models
+./yii gii/model --enableI18N --modelClass Advertencia --tableName ara_advertencia --interactive 0
+./yii gii/model --enableI18N --modelClass Grupo --tableName ara_grupo --interactive 0
+./yii gii/model --enableI18N --modelClass Calendario --tableName ara_calendario --interactive 0
+./yii gii/model --enableI18N --modelClass Configuracao --tableName ara_configuracao --interactive 0
+./yii gii/model --enableI18N --modelClass Fabricante --tableName ara_fabricante --interactive 0
+./yii gii/model --enableI18N --modelClass Localizacao --tableName ara_localizacao --interactive 0
+./yii gii/model --enableI18N --modelClass Log --tableName ara_log --interactive 0
+./yii gii/model --enableI18N --modelClass ModeloRoteador --tableName ara_modeloroteador --interactive 0
+./yii gii/model --enableI18N --modelClass PostAuth --tableName radpostauth --interactive 0
+./yii gii/model --enableI18N --modelClass Roteador --tableName ara_roteador --interactive 0
+./yii gii/model --enableI18N --modelClass Visitante --tableName ara_visitante --interactive 0
+./yii gii/model --enableI18N --modelClass Documento --tableName ara_documento --interactive 0
+./yii gii/model --enableI18N --modelClass Usuario --tableName ara_usuario --interactive 0
+
+---acertar AraUsuario no arquivo models\Adverte*
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\AdvertenciaController' --modelClass 'app\models\Advertencia' --searchModelClass 'app\models\AdvertenciaSearch'
+
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\CalendarioController' --modelClass 'app\models\Calendario' --searchModelClass 'app\models\CalendarioSearch'
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\ConfiguracaoController' --modelClass 'app\models\Configuracao' --searchModelClass 'app\models\ConfiguracaoSearch'
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\DocumentoController' --modelClass 'app\models\Documento' --searchModelClass 'app\models\DocumentoSearch'
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\FabricanteController' --modelClass 'app\models\Fabricante' --searchModelClass 'app\models\FabricanteSearch'
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\GrupoController' --modelClass 'app\models\Grupo' --searchModelClass 'app\models\GrupoSearch'
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\LocalizacaoController' --modelClass 'app\models\Localizacao' --searchModelClass 'app\models\LocalizacaoSearch'
+
+---acertar AraFabricante no arquivo models\ModeloRo*
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\ModeloRoteadorController' --modelClass 'app\models\ModeloRoteador' --searchModelClass 'app\models\ModeloRoteadorSearch'
+
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\PostAuthController' --modelClass 'app\models\PostAuth' --searchModelClass 'app\models\PostAuthSearch'
+
+---acertar models/Roteador
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\RoteadorController' --modelClass 'app\models\Roteador' --searchModelClass 'app\models\RoteadorSearch'
+
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\UsuarioController' --modelClass 'app\models\Usuario' --searchModelClass 'app\models\UsuarioSearch'
+./yii gii/crud --enableI18N --interactive 1 --controllerClass  'app\controllers\VisitanteController' --modelClass 'app\models\Visitante' --searchModelClass 'app\models\VisitanteSearch'
+
+
+
+
+
+
+Advertencia
+Calendario
+Configuracao
+Documento
+Fabricante
+Grupo
+Localizacao
+ModeloRoteador
+PostAuth
+Roteador
+Usuario
+Visitante
+
+----
+var_dump($data);
+
+--erro na class delete
+https://stackoverflow.com/questions/47351260/yii2-model-loadyiiapp-request-post-does-not-load-data-from-form
+
+-- findModel or loadModel exemplo
+https://www.yiiframework.com/forum/index.php/topic/63322-loadmodel/
+
+
+--- criar tabela mac-addre para autologin
+CREATE TABLE ara_macaddress(
+	mac_Id serial primary key,
+	mac_address VARCHAR(20),
+	usuId BIGINT REFERENCES ara_Usuario
+	);
+
+--- teste login-mk.php
+$query = "SELECT usulogin,ususenha FROM ara_usuario INNER JOIN ara_macaddress ON ara_usuario.usuid=ara_macaddress.usuid WHERE mac_address='11:11:11:11:11:11'";
+
+$query = "SELECT usulogin,ususenha FROM ara_usuario INNER JOIN ara_macaddress ON ara_usuario.usuid=ara_macaddress.usuid WHERE mac_address='".$mac."'";
+
+$query = "SELECT usulogin,ususenha FROM ara_usuario WHERE ara_macaddress.mac_address='".$mac."'";
+
+
+	
